@@ -1,6 +1,6 @@
 {
 
-  "homepage": "https://harrir11.github.io/react-portfolio",
+  "homepage": "https://harrir11.github.io/egg_map",
 
   "scripts": {
 
@@ -10,7 +10,11 @@
 
     "start": "next start",
 
-    "lint": "eslint"
+    "lint": "eslint",
+    
+    "predeploy": "npm run build",
+
+    "deploy": "gh-pages -d out"
 
   },
 
@@ -61,4 +65,3 @@
   }
 
 }
-
