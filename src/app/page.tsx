@@ -2,19 +2,21 @@
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import "leaflet/dist/leaflet.css";
+import type { ReactNode, MouseEventHandler } from "react";
+
+// Leaflet types
+import type {
+  Map as LeafletMap,
+  LeafletMouseEvent,
+  LatLngLiteral,
+  LeafletEvent,
+} from "leaflet";
+
+// Dynamic import type for react-leaflet
+type ReactLeafletModule = typeof import("react-leaflet");
 
 /**
  * EGG — interactive map with egg prices + complaints (CRUD).
- *
- * New feature: "Complaints"
- * - Click “Pick location” then click the map to choose coordinates.
- * - Fill the complaint text, Save to drop a pin.
- * - Edit/Delete in popup or from the side list.
- * - Persists in localStorage ("eggComplaints").
- *
- * Notes:
- * - Still lazy-loads react-leaflet to avoid SSR build issues.
- * - Complaints render as purple pins (CircleMarker) with popups.
  */
 
 // --------------------------------------
@@ -42,28 +44,47 @@ const SAMPLE_POINTS = [
   { id: 15, name: "Seoul, KR", lat: 37.5665, lng: 126.978, priceUSD: 4.35, date: "2025-08-19", source: "KOSIS (example)", url: "https://example.com/seoul-eggs" }
 ];
 
-
-export function dollarFormat(n) {
+export function dollarFormat(n: number): string {
   return `$${n.toFixed(2)}`;
 }
 
-export function priceToColor(price) {
+export function priceToColor(price: number): string {
   const clamped = Math.max(MIN_PRICE, Math.min(MAX_PRICE, price));
   const t = (clamped - MIN_PRICE) / (MAX_PRICE - MIN_PRICE);
-  const hue = 120 * (1 - t); // 120 green to 0 red
-  return `hsl(${hue}, 85%, 45%)`;
+  const hue = 120 * (1 - t); // 120 = green → 0 = red
+  return `hsl(${hue}, 100%, 50%)`;
 }
 
 // --------------------------------------
 // Minimal UI primitives (no external UI libs)
 // --------------------------------------
-function Card({ children, className = "" }) {
+function Card(
+  { children, className = "" }: { children: React.ReactNode; className?: string }
+) {
   return <div className={`rounded-2xl shadow-xl bg-white/85 ${className}`}>{children}</div>;
 }
-function CardContent({ children, className = "" }) {
-  return <div className={`p-4 ${className}`}>{children}</div>;
+
+function CardContent(
+  { children, className = "" }: { children: React.ReactNode; className?: string }
+) {
+  return <div className={`p-6 ${className}`}>{children}</div>;
 }
-function Button({ children, onClick, className = "", type = "button", disabled }) {
+
+type ButtonProps = {
+  children: ReactNode;
+  onClick?: MouseEventHandler<HTMLButtonElement>;
+  className?: string;
+  type?: "button" | "submit" | "reset";
+  disabled?: boolean;
+};
+
+function Button({
+  children,
+  onClick,
+  className = "",
+  type = "button",
+  disabled,
+}: ButtonProps) {
   return (
     <button
       type={type}
@@ -75,7 +96,17 @@ function Button({ children, onClick, className = "", type = "button", disabled }
     </button>
   );
 }
-function Range({ value, min, max, step, onChange }) {
+
+// Range input
+type RangeProps = {
+  value: number;
+  min: number;
+  max: number;
+  step?: number;
+  onChange: (v: number) => void;
+};
+
+function Range({ value, min, max, step, onChange }: RangeProps) {
   return (
     <input
       type="range"
@@ -83,7 +114,7 @@ function Range({ value, min, max, step, onChange }) {
       min={min}
       max={max}
       step={step}
-      onChange={(e) => onChange(Number(e.target.value))}
+      onChange={(e) => onChange(Number(e.currentTarget.value))}
       className="w-full"
     />
   );
@@ -92,66 +123,94 @@ function Range({ value, min, max, step, onChange }) {
 // --------------------------------------
 // Top Bar
 // --------------------------------------
-function TopBar({ maxPrice, setMaxPrice }) {
+type TopBarProps = {
+  maxPrice: number;
+  setMaxPrice: React.Dispatch<React.SetStateAction<number>>;
+};
+
+function TopBar({ maxPrice, setMaxPrice }: TopBarProps) {
   return (
     <div className="z-[1000] fixed top-3 left-1/2 -translate-x-1/2 w-[min(980px,92vw)]">
-      <Card className="backdrop-blur border-0">
-        <CardContent className="p-4">
-          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-            <div>
-              <h1 className="text-2xl font-bold tracking-tight">egg!</h1>
-              <p className="text-sm text-gray-600 -mt-0.5">Prices + public complaints (demo data)</p>
-            </div>
-            <div className="flex items-center gap-4 w-full md:w-auto">
-              <div className="w-full md:w-72">
-                <label className="text-xs text-gray-700 font-medium block mb-1">
-                  Max price filter: {dollarFormat(maxPrice)}
-                </label>
-                <Range
-                  value={maxPrice}
-                  min={MIN_PRICE}
-                  max={MAX_PRICE}
-                  step={0.05}
-                  onChange={(v) => setMaxPrice(v)}
-                />
-              </div>
-              <Button onClick={() => setMaxPrice(MAX_PRICE)}>
-                <span aria-hidden></span> Reset
-              </Button>
-            </div>
+    <Card className="backdrop-blur border-0">
+      <CardContent className="p-4">
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight">egg!</h1>
+            <p className="text-sm text-gray-600 -mt-0.5">Prices + public complaints (demo data)</p>
           </div>
-        </CardContent>
-      </Card>
-    </div>
+          <div className="flex items-center gap-4 w-full md:w-auto">
+            <div className="w-full md:w-72">
+              <label className="text-xs text-gray-700 font-medium block mb-1">
+                Max price filter: {dollarFormat(maxPrice)}
+              </label>
+              <Range
+                value={maxPrice}
+                min={MIN_PRICE}
+                max={MAX_PRICE}
+                step={0.05}
+                onChange={(v) => setMaxPrice(v)}
+              />
+            </div>
+            <Button onClick={() => setMaxPrice(MAX_PRICE)}>
+              <span aria-hidden></span> Reset
+            </Button>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  </div>
   );
 }
 
-function ComplaintClickHandler({ picking, setDraftLatLng, leaflet }) {
-  const map = leaflet.useMapEvents({
-    click(e) {
-      if (picking) {
-        setDraftLatLng(e.latlng); // {lat, lng}
-      }
+// --------------------------------------
+// Leaflet helpers / types
+// --------------------------------------
+type Complaint = {
+  id: number;
+  lat: number;
+  lng: number;
+  text: string;
+  createdAt: string;
+};
+
+type ComplaintClickHandlerProps = {
+  picking: boolean;
+  setDraftLatLng: (ll: LatLngLiteral | null) => void;
+  leaflet: ReactLeafletModule;
+};
+
+function ComplaintClickHandler({ picking, setDraftLatLng, leaflet }: ComplaintClickHandlerProps) {
+  leaflet.useMapEvents({
+    click(e: LeafletMouseEvent) {
+      if (picking) setDraftLatLng(e.latlng);
     },
   });
   return null;
+}
+
+// Expose optional test flag on window without `any`
+declare global {
+  interface Window {
+    __EGG_RUN_TESTS__?: boolean;
+  }
 }
 
 // --------------------------------------
 // Main Component with Complaints CRUD
 // --------------------------------------
 export default function EggMap() {
-  const [maxPrice, setMaxPrice] = useState(MAX_PRICE);
+  const [maxPrice, setMaxPrice] = useState<number>(MAX_PRICE);
   const isClient = typeof window !== "undefined";
 
   // Dynamically import react-leaflet on the client
-  const [leaflet, setLeaflet] = useState(null);
-  const mapRef = useRef(null);
+  const [leaflet, setLeaflet] = useState<ReactLeafletModule | null>(null);
+  const mapRef = useRef<LeafletMap | null>(null);
+
   useEffect(() => {
     let mounted = true;
     if (isClient) {
       import("react-leaflet")
-        .then((mod) => mounted && setLeaflet(mod))
+        .then((mod) => { if (mounted) setLeaflet(mod); })
         .catch((e) => console.warn("Failed to load react-leaflet dynamically:", e));
     }
     return () => { mounted = false; };
@@ -159,13 +218,16 @@ export default function EggMap() {
 
   // Filtered price points
   const points = useMemo(() => SAMPLE_POINTS.filter((p) => p.priceUSD <= maxPrice), [maxPrice]);
-  const avg = useMemo(() => (points.length ? points.reduce((s, p) => s + p.priceUSD, 0) / points.length : 0), [points]);
+  const avg = useMemo(
+    () => (points.length ? points.reduce((s, p) => s + p.priceUSD, 0) / points.length : 0),
+    [points]
+  );
 
   // --------------------------
   // Complaints state + storage
   // --------------------------
-  const [complaints, setComplaints] = useState([
-    {id: 101,lat: 40.7306, lng: -73.9352,text: "Almost $4.00 for a dozen?? Outrageous!",createdAt: "2025-08-01T10:30:00Z"},
+  const [complaints, setComplaints] = useState<Complaint[]>([
+    { id: 101, lat: 40.7306, lng: -73.9352, text: "Almost $4.00 for a dozen?? Outrageous!", createdAt: "2025-08-01T10:30:00Z" },
   ]);
 
   const storageKey = "eggComplaints";
@@ -174,7 +236,7 @@ export default function EggMap() {
     if (!isClient) return;
     try {
       const raw = window.localStorage.getItem(storageKey);
-      if (raw) setComplaints(JSON.parse(raw));
+      if (raw) setComplaints(JSON.parse(raw) as Complaint[]);
     } catch (e) {
       console.warn("Failed to load complaints:", e);
     }
@@ -190,17 +252,17 @@ export default function EggMap() {
   }, [complaints, isClient]);
 
   // Draft / editor state
-  const [picking, setPicking] = useState(false); // map-click to choose a location
-  const [draftLatLng, setDraftLatLng] = useState(null); // {lat,lng}
-  const [draftText, setDraftText] = useState("");
-  const [editingId, setEditingId] = useState(null);
+  const [picking, setPicking] = useState<boolean>(false); // map-click to choose a location
+  const [draftLatLng, setDraftLatLng] = useState<LatLngLiteral | null>(null);
+  const [draftText, setDraftText] = useState<string>("");
+  const [editingId, setEditingId] = useState<number | null>(null);
 
-  // Map click handler (without useMapEvents, to keep dynamic import simple)
+  // Map click handler (manual, separate from useMapEvents)
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
 
-    const handleClick = (e) => {
+    const handleClick = (e: LeafletMouseEvent) => {
       if (!picking) return;
       const { lat, lng } = e.latlng || {};
       if (typeof lat === "number" && typeof lng === "number") {
@@ -212,12 +274,12 @@ export default function EggMap() {
     return () => {
       map.off("click", handleClick);
     };
-  }, [picking, leaflet, mapRef.current]);
+  }, [picking]);
 
   // CRUD helpers
   const createComplaint = () => {
     if (!draftLatLng || !draftText.trim()) return;
-    const newItem = {
+    const newItem: Complaint = {
       id: Date.now(),
       lat: draftLatLng.lat,
       lng: draftLatLng.lng,
@@ -228,7 +290,7 @@ export default function EggMap() {
     resetDraft();
   };
 
-  const startEdit = (c) => {
+  const startEdit = (c: Complaint) => {
     setEditingId(c.id);
     setDraftText(c.text);
     setDraftLatLng({ lat: c.lat, lng: c.lng });
@@ -240,14 +302,19 @@ export default function EggMap() {
     setComplaints((prev) =>
       prev.map((c) =>
         c.id === editingId
-          ? { ...c, text: draftText.trim(), lat: draftLatLng?.lat ?? c.lat, lng: draftLatLng?.lng ?? c.lng }
+          ? {
+              ...c,
+              text: draftText.trim(),
+              lat: draftLatLng?.lat ?? c.lat,
+              lng: draftLatLng?.lng ?? c.lng,
+            }
           : c
       )
     );
     resetDraft();
   };
 
-  const deleteComplaint = (id) => {
+  const deleteComplaint = (id: number) => {
     setComplaints((prev) => prev.filter((c) => c.id !== id));
     if (editingId === id) resetDraft();
   };
@@ -260,7 +327,8 @@ export default function EggMap() {
   };
 
   // Quick helper to show a nice label for coordinates
-  const coordLabel = (ll) => (ll ? `${ll.lat.toFixed(4)}, ${ll.lng.toFixed(4)}` : "—");
+  const coordLabel = (ll: LatLngLiteral | null): string =>
+    ll ? `${ll.lat.toFixed(4)}, ${ll.lng.toFixed(4)}` : "—";
 
   return (
     <div className="h-screen w-screen relative">
@@ -340,18 +408,18 @@ export default function EggMap() {
       {/* Map only renders when react-leaflet is loaded on the client */}
       {isClient && leaflet ? (
         <leaflet.MapContainer
+          ref={mapRef}
           center={[20, 0]}
           zoom={2}
           scrollWheelZoom={true}
           className="h-full w-full rounded-none"
-          whenCreated={(m) => { mapRef.current = m; }}
         >
           <leaflet.TileLayer
             attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
           />
 
-          {/* attach our click handler */}
+          {/* Attach our click handler */}
           <ComplaintClickHandler picking={picking} setDraftLatLng={setDraftLatLng} leaflet={leaflet} />
 
           {/* Price points */}
@@ -398,7 +466,9 @@ export default function EggMap() {
               <leaflet.Popup>
                 <div className="w-56 text-xs">
                   <div className="font-semibold mb-1">Draft complaint</div>
-                  <div className="text-gray-700 mb-1">{draftText || <span className="italic text-gray-500">No text yet</span>}</div>
+                  <div className="text-gray-700 mb-1">
+                    {draftText || <span className="italic text-gray-500">No text yet</span>}
+                  </div>
                   <div className="text-[11px] text-gray-500 mb-2">{coordLabel(draftLatLng)}</div>
                   <div className="flex gap-2">
                     {editingId ? (
@@ -466,20 +536,20 @@ export default function EggMap() {
 // Lightweight in-file test harness
 // --------------------------------------
 export function runEggTests() {
-  const results = [];
-  const assert = (name, cond) => results.push({ name, pass: !!cond });
+  const results: { name: string; pass: boolean }[] = [];
+  const assert = (name: string, cond: boolean) => results.push({ name, pass: !!cond });
 
   assert("dollarFormat formats to two decimals", dollarFormat(3.5) === "$3.50");
   assert("dollarFormat pads zeros", dollarFormat(3) === "$3.00");
 
-  const hueNum = (hsl) => {
+  const hueNum = (hsl: string) => {
     const m = /hsl\((\d+(?:\.\d+)?)/.exec(hsl);
     return m ? Number(m[1]) : NaN;
   };
   const low = priceToColor(MIN_PRICE);
   const mid = priceToColor((MIN_PRICE + MAX_PRICE) / 2);
   const high = priceToColor(MAX_PRICE);
-  const hue = (p) => hueNum(priceToColor(p));
+  const hue = (p: number) => hueNum(priceToColor(p));
   assert("priceToColor low closer to green (hue ~120)", hueNum(low) > 80);
   assert("priceToColor mid between green and red", hueNum(mid) > 20 && hueNum(mid) < 100);
   assert("priceToColor high closer to red (hue ~0)", hueNum(high) < 40);
@@ -502,11 +572,9 @@ if (typeof window !== "undefined") {
     if (shouldRun) {
       const results = runEggTests();
       const summary = `${results.filter((r) => r.pass).length}/${results.length} tests passed`;
-      // eslint-disable-next-line no-console
       console.log("EGG test results:", results, summary);
     }
   } catch (e) {
-    // eslint-disable-next-line no-console
     console.warn("EGG tests failed to execute:", e);
   }
 }
